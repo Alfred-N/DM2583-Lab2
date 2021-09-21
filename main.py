@@ -42,6 +42,8 @@ x_eval = vec.transform(evaluation["text"]).toarray()
 print("Training model...")
 # param C is the regularization parameter, I guess we could implement cross-validation using train/test to tune it
 # and then finally evaluate the model on the (unseen) evaluation data
+
+# you could try SVC too (high-dimensional) but I found it is extremely slow to train
 # model = SVC(kernel="rbf", C=1, verbose=True)
 model = LinearSVC(C=1, verbose=True)
 model.fit(x_train, train["score"].values)
