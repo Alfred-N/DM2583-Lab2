@@ -3,9 +3,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.model_selection import cross_val_score
 from process_data import process_strings
-from sklearn.svm import SVC
-from sklearn.svm import LinearSVC
+from sklearn.svm import SVC, LinearSVC
 
 # read data sets
 train = pd.read_csv("train.csv", dtype={"score": np.int32, "text": str})
@@ -15,49 +15,65 @@ evaluation = pd.read_csv("evaluation.csv", dtype={"score": np.int32, "text": str
 # choose type of data processing
 parser = ArgumentParser("Demonstration of SVM in training, predicting, and evaluating data sets.")
 parser.add_argument("-v", "--verbose", action="store_true", help="Print additional logs.")
+parser.add_argument("-c", "--crossvalidate", action="store_true", help="Perform cross validation scoring and show plot.")
 parser.add_argument("-p", "--preprocessor", default="sklearn",
                     help="Type of preprocessor to be used. Options are sklearn' or 'own'.")
 args = parser.parse_args()
 algorithm = args.preprocessor
 
+# combine training and test data set
+# to have more data for cross validations
+train = train.append(test)
+
 # preprocess data
 if algorithm == "own":
     print("Preprocessing data with own algorithm...")
     train["text"] = process_strings(train)
-    test["text"] = process_strings(test)
     evaluation["text"] = process_strings(evaluation)
     vec = TfidfVectorizer()
 else:
     print("Preprocessing data with SKlearn...")
     train["text"] = train["text"].str.strip().str.lower()
-    test["text"] = test["text"].str.strip().str.lower()
     evaluation["text"] = evaluation["text"].str.strip().str.lower()
     vec = TfidfVectorizer(stop_words='english')
 
 # transform data
 print("Transforming data...")
 x_train = vec.fit_transform(train["text"]).toarray()
-x_test = vec.transform(test["text"]).toarray()
 x_eval = vec.transform(evaluation["text"]).toarray()
 
-# train model
-print("Training model...")
-# param C is the regularization parameter, I guess we could implement cross-validation using train/test to tune it
-# and then finally evaluate the model on the (unseen) evaluation data
-
-# you could try SVC too (high-dimensional) but I found it is extremely slow to train
-# model = SVC(kernel="rbf", C=1, verbose=True)
+# define model
 model = LinearSVC(C=1, verbose=args.verbose)
-model.fit(x_train, train["score"].values)
+
+# k-Fold cross validation
+if args.crossvalidate:
+    print("Cross validating data...")
+    results = list()
+    repeats = range(2, 6)
+    for r in repeats:
+        results.append(cross_val_score(model, x_train, train["score"].values, cv=r))
+    plt.boxplot(results, labels=[str(r) for r in repeats], showmeans=True)
+    plt.xlabel("Number of bins")
+    plt.ylabel("Model accuracy")
+    plt.title("Box plot of accuracy with different amount of bins")
+    plt.show()
+    exit(0)
+
+# train model on selected data bins
+scores = cross_val_score(model, x_train, train["score"].values, cv=5)
+idx = np.argmax(scores)
+size = int(len(x_train) / 5)
+mask = np.ones(len(x_train), bool)
+mask[idx*size:(idx+1)*size] = 0
+print("Training model...")
+model.fit(x_train[mask], train["score"].values[mask])
 
 # measure accuracies of models
 print("Scoring model...")
 acc_train = model.score(x_train, train["score"].values)
-acc_test = model.score(x_test, test["score"].values)
 acc_eval = model.score(x_eval, evaluation["score"].values)
 
 print(f"Accuracy on training data = {round(acc_train, 3)} %")
-print(f"Accuracy on test data = {round(acc_test, 3)} %")
 print(f"Accuracy on evaluation data = {round(acc_eval, 3)} %")
 
 # calculate how many predictions were off
