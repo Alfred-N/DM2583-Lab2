@@ -16,6 +16,7 @@ evaluation = pd.read_csv("evaluation.csv", dtype={"score": np.int32, "text": str
 parser = ArgumentParser("Demonstration of SVM in training, predicting, and evaluating data sets.")
 parser.add_argument("-v", "--verbose", action="store_true", help="Print additional logs.")
 parser.add_argument("-c", "--crossvalidate", action="store_true", help="Perform cross validation scoring and show plot.")
+parser.add_argument("-r", "--regsweep", action="store_true", help="Perform 4-fold CV and regularization parameter sweep")
 parser.add_argument("-p", "--preprocessor", default="sklearn",
                     help="Type of preprocessor to be used. Options are sklearn' or 'own'.")
 args = parser.parse_args()
@@ -42,12 +43,11 @@ print("Transforming data...")
 x_train = vec.fit_transform(train["text"]).toarray()
 x_eval = vec.transform(evaluation["text"]).toarray()
 
-# define model
-model = LinearSVC(C=1, verbose=args.verbose)
 
 # k-Fold cross validation
 if args.crossvalidate:
     print("Cross validating data...")
+    model = LinearSVC(C=1, verbose=args.verbose)
     results = list()
     repeats = range(2, 6)
     for r in repeats:
@@ -59,10 +59,28 @@ if args.crossvalidate:
     plt.show()
     exit(0)
 
+if args.regsweep:
+    print("Performing regularization param sweep...")
+    results = list()
+    repeats = [0.1,0.5,1,1.5,2]
+    for r in repeats:
+        model = LinearSVC(C=r, verbose=args.verbose)
+        results.append(cross_val_score(model, x_train, train["score"].values, cv=4))
+    plt.boxplot(results, labels=[str(r) for r in repeats], showmeans=True)
+    plt.xlabel("C")
+    plt.ylabel("Model accuracy")
+    plt.title("Box plot of accuracy with different amounts of regularization")
+    plt.show()
+    exit(0)
+
+#define best model
+model = LinearSVC(C=0.5, verbose=args.verbose)
+
 # train model on selected data bins
-scores = cross_val_score(model, x_train, train["score"].values, cv=5)
+n_bins = 4
+scores = cross_val_score(model, x_train, train["score"].values, cv=n_bins)
 idx = np.argmax(scores)
-size = int(len(x_train) / 5)
+size = int(len(x_train) / n_bins)
 mask = np.ones(len(x_train), bool)
 mask[idx*size:(idx+1)*size] = 0
 print("Training model...")
